@@ -66,6 +66,112 @@ Eigen::MatrixXd Compute_Hessian_Matrix(vector<Atom> &atoms, double delta, double
     return hessian;
 }
 
+// Function to transform Hessian to mass-weighted coordinates
+Eigen::MatrixXd TransformToMassWeighted(const Eigen::MatrixXd &hessian, const std::vector<Atom> &atoms) {
+    int num_atoms = atoms.size();
+    Eigen::MatrixXd mass_weighted_hessian = Eigen::MatrixXd::Zero(3 * num_atoms, 3 * num_atoms);
+
+    for (int i = 0; i < 3 * num_atoms; ++i) {
+        for (int j = 0; j < 3 * num_atoms; ++j) {
+            int atom_i = i / 3;  // Determine which atom the row coordinate belongs to
+            int atom_j = j / 3;  // Determine which atom the column coordinate belongs to
+            mass_weighted_hessian(i, j) = hessian(i, j) / sqrt(atoms[atom_i].mass * atoms[atom_j].mass);
+        }
+    }
+
+    return mass_weighted_hessian;
+}
+
+// Function that reads input files
+vector<Atom> ReadInput(const string &file_name) {
+    ifstream infile(file_name);
+    if (!infile.is_open()) {
+        throw runtime_error("ERROR: Cannot open file: " + file_name);
+    }
+
+    vector<Atom> atoms;
+    int num_atoms, charge;
+    infile >> num_atoms >> charge;
+
+    for (int i = 0; i < num_atoms; ++i) {
+        int atomic_num;
+        double x, y, z;
+        infile >> atomic_num >> x >> y >> z;
+        atoms.push_back({static_cast<double>(atomic_num), {x, y, z}});
+    }
+
+    infile.close();
+    return atoms;
+}
+
+// Function that generates output files
+void WriteOutput(const string &file_name, const Eigen::MatrixXd &hessian) {
+    ofstream outfile(file_name);
+    if (!outfile.is_open()) {
+        throw runtime_error("ERROR: Cannot open file: " + file_name);
+    }
+
+    outfile << "Hessian Matrix:" << endl;
+    outfile << hessian << endl;
+    outfile.close();
+}
+
 int main(){
+
+    vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/HO.txt"};
+    vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/HO_results.txt"};
+
+    // For correct sigma/epsilon/delta values based on input molecule
+    struct MoleculeParameters {
+        double Sigma;
+        double Epsilon;
+        double delta;
+    };
+
+    vector<MoleculeParameters> molecule_params = {
+        {2.75, 0.0104, 0.001},  // H2: Sigma (Å), Epsilon (eV), delta
+        {3.16, 0.650, 0.001},   // H2O: Sigma (Å), Epsilon (eV), delta
+        {3.46, 0.138, 0.001}    // HO: Sigma (Å), Epsilon (eV), delta
+    };
+
+    for (size_t i = 0; i < input_files.size(); ++i) {
+        try {
+            std::cout << "Processing " << input_files[i] << "..." << std::endl;
+
+            // Read atoms from the input file
+            std::vector<Atom> atoms = ReadInput(input_files[i]);
+
+            // Retrieve molecule-specific parameters
+            const MoleculeParameters &params = molecule_params[i];
+
+            // Compute the Hessian matrix
+            Eigen::MatrixXd hessian = Compute_Hessian_Matrix(atoms, params.delta, params.Sigma, params.Epsilon);
+
+            // Transform Hessian to mass-weighted coordinates
+            Eigen::MatrixXd mass_weighted_hessian = TransformToMassWeighted(hessian, atoms);
+
+            // Diagonalize the mass-weighted Hessian
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian);
+            Eigen::VectorXd eigenvalues = solver.eigenvalues();   // Vibrational frequencies squared
+            Eigen::MatrixXd eigenvectors = solver.eigenvectors(); // Normal modes
+
+            // Output the results
+            std::ofstream outfile(output_files[i]);
+            if (!outfile.is_open()) {
+                throw std::runtime_error("ERROR: Cannot open file: " + output_files[i]);
+            }
+
+            // Write the eigenvalues (vibrational frequencies squared) and eigenvectors (normal modes) to the file
+            outfile << "Mass-Weighted Hessian Matrix:\n" << mass_weighted_hessian << "\n\n";
+            outfile << "Eigenvalues (vibrational frequencies squared):\n" << eigenvalues << "\n\n";
+            outfile << "Eigenvectors (normal modes):\n" << eigenvectors << "\n";
+            outfile.close();
+
+            std::cout << "Results written to " << output_files[i] << std::endl;
+        } catch (const std::runtime_error &e) {
+            std::cerr << e.what() << std::endl;
+        }
+    }
+
     return 0;
 }

@@ -1,0 +1,23 @@
+Mass-Weighted Hessian Matrix:
+-96067.3        0        0        0        0        0
+       0  7314.19        0        0        0        0
+       0        0  7314.19        0        0        0
+       0        0        0 -12008.4        0        0
+       0        0        0        0  914.274        0
+       0        0        0        0        0  914.274
+
+Eigenvalues (vibrational frequencies squared):
+-96067.3
+-12008.4
+ 914.274
+ 914.274
+ 7314.19
+ 7314.19
+
+Eigenvectors (normal modes):
+1 0 0 0 0 0
+0 0 0 0 0 1
+0 0 0 0 1 0
+0 1 0 0 0 0
+0 0 1 0 0 0
+0 0 0 1 0 0
