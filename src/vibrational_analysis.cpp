@@ -82,6 +82,36 @@ Eigen::MatrixXd TransformToMassWeighted(const Eigen::MatrixXd &hessian, const st
     return mass_weighted_hessian;
 }
 
+// Function to compute vibrational frequencies from mass-weighted Hessian Matrix
+Eigen::VectorXd Compute_Vibrational_Frequencies(const Eigen::MatrixXd &mass_weighted_hessian){
+
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian); // Computes eigenvalues 
+    Eigen::VectorXd Eigen_vals = solver.eigenvalues(); // Retrieves eigenvalues of the mass-weighted hessian
+
+    Eigen::VectorXd frequencies(Eigen_vals.size());   
+    for(int i = 0; i < frequencies.size(); i++){
+        frequencies(i) = Eigen_vals(i) > 0 ? sqrt(Eigen_vals(i)) : 0.0; // Eigenvalues are converted to frequencies by taking the square root. Only positive values are of any meaning
+    } 
+
+    return frequencies;
+}
+
+// Function to calculate teh Partition function
+double Calculate_Partition_Function(const Eigen::VectorXd& frequencies, double temperature) {
+    double partition_function = 1.0;
+    const double k_B = 1.38e-23;  // Boltzmann constant in J/K
+    const double h = 6.626e-34;   // Planck constant in J·s
+    const double c = 3.00e10;     // Speed of light in cm/s
+
+    for (int i = 0; i < frequencies.size(); i++) {
+        if (frequencies(i) > 0) {
+            double energy = h * c * frequencies(i); // Convert to energy in Joules
+            partition_function *= 1.0 / (1.0 - exp(-energy / (k_B * temperature)));
+        }
+    }
+    return partition_function;
+}
+
 // Function that reads input files
 vector<Atom> ReadInput(const string &file_name) {
     ifstream infile(file_name);
