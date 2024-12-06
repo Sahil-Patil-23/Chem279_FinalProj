@@ -4,3 +4,6 @@ vibes:
 
 run: 
 	cd src && ./vibrational_analysis
+
+all:
+	make vibes && make run

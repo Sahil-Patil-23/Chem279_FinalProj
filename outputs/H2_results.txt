@@ -22,6 +22,14 @@ Eigenvalues (Vibrational Frequencies Squared):
 3.52426e-09
     21924.5
 
+Vibrational Frequencies (cm^-1):
+          0
+          0
+2.17748e-10
+2.17748e-10
+    13.0292
+3.24974e+07
+
 Eigenvectors (Normal Modes):
         0         0         0         0 -0.707107  0.707107
         0 -0.707107         0  0.707107        -0         0

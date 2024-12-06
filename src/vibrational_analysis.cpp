@@ -153,15 +153,32 @@ int main() {
         try {
             cout << "Processing " << input_files[i] << "..." << endl;
 
+            // Step 1: Read and set up atomic data
             vector<Atom> atoms = ReadInput(input_files[i]);
             const MoleculeParameters &params = molecule_params[i];
 
+            // Step 2: Compute Hessian Matrix
             Eigen::MatrixXd hessian = Compute_Hessian_Matrix(atoms, params.delta, params.Sigma, params.Epsilon);
+
+            // Step 3: Transform Hessian Matrix to a Mass-Weighted Matrix
             Eigen::MatrixXd mass_weighted_hessian = TransformToMassWeighted(hessian, atoms);
 
+            // Step 4: Compute Vibrational Frequencies
+            Eigen::VectorXd frequencies = Compute_Vibrational_Frequencies(mass_weighted_hessian);
+
+            // Converting frequencies to cm^-1
+            const double conversion_factor = 2.194746313e5;
+            Eigen::VectorXd frequencies_cm(frequencies.size());
+            for(int i = 0; i < frequencies.size(); i++){
+                frequencies_cm[i] = frequencies[i] * (conversion_factor);
+            }
+
+            // Step 5: Compute eigenvalues and eigenvectors for normal modes
             Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian);
             Eigen::VectorXd eigenvalues = solver.eigenvalues();
             Eigen::MatrixXd eigenvectors = solver.eigenvectors();
+
+
 
             ofstream outfile(output_files[i]);
             if (!outfile.is_open()) throw runtime_error("ERROR: Cannot open file: " + output_files[i]);
@@ -169,6 +186,7 @@ int main() {
             outfile << "Hessian Matrix:\n" << hessian << "\n\n";
             outfile << "Mass-Weighted Hessian Matrix:\n" << mass_weighted_hessian << "\n\n";
             outfile << "Eigenvalues (Vibrational Frequencies Squared):\n" << eigenvalues << "\n\n";
+            outfile << "Vibrational Frequencies (cm^-1):\n" << frequencies_cm << "\n\n";
             outfile << "Eigenvectors (Normal Modes):\n" << eigenvectors << "\n";
 
             outfile.close();
