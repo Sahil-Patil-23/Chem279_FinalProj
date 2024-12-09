@@ -132,6 +132,16 @@ vector<Atom> ReadInput(const string &file_name) {
     return atoms;
 }
 
+// Function to convert coordinates from Ångstrom to Bohr
+void Convert_To_Bohr(vector<Atom> &atoms) {
+    const double angstrom_to_bohr = 1.8897259886;
+    for (Atom &atom : atoms) {
+        for (double &coord : atom.coordinates) {
+            coord *= angstrom_to_bohr;
+        }
+    }
+}
+
 // Main function
 int main() {
     vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/HO.txt"};
@@ -143,10 +153,11 @@ int main() {
         double delta;
     };
 
+    // For testing purposes, I have chagned the delta values to 1e-4
     vector<MoleculeParameters> molecule_params = {
-        {2.75, 0.0104, 0.001},  // H2
-        {3.16, 0.650, 0.001},   // H2O
-        {3.46, 0.138, 0.001}    // HO
+        {2.75, 0.0104, 0.0001},  // H2
+        {3.16, 0.650, 0.0001},   // H2O
+        {3.46, 0.138, 0.0001}    // HO
     };
 
     for (size_t i = 0; i < input_files.size(); ++i) {
@@ -155,6 +166,7 @@ int main() {
 
             // Step 1: Read and set up atomic data
             vector<Atom> atoms = ReadInput(input_files[i]);
+            Convert_To_Bohr(atoms);
             const MoleculeParameters &params = molecule_params[i];
 
             // Step 2: Compute Hessian Matrix
@@ -166,8 +178,8 @@ int main() {
             // Step 4: Compute Vibrational Frequencies
             Eigen::VectorXd frequencies = Compute_Vibrational_Frequencies(mass_weighted_hessian);
 
-            // Converting frequencies to cm^-1
-            const double conversion_factor = 2.194746313e5;
+            // Converting frequencies to cm^-1 from Bohr
+            const double conversion_factor = 5140.486; 
             Eigen::VectorXd frequencies_cm(frequencies.size());
             for(int i = 0; i < frequencies.size(); i++){
                 frequencies_cm[i] = frequencies[i] * (conversion_factor);
