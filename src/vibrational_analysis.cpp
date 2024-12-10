@@ -5,13 +5,16 @@
 #include <Eigen/Dense>
 using namespace std;
 
+// Struct to store atomic data: mass, charge, and coordinates
 struct Atom {
-    double mass;                 // Atomic mass
-    vector<double> coordinates;  // x, y, z coordinates
+    double mass;                 // Atomic mass in atomic mass units (amu)
+    double charge;               // Partial charge for dipole derivative calculations
+    vector<double> coordinates;  // x, y, z coordinates in Ångstrom or Bohr
 };
 
 // Function to calculate the distance between two atoms
 double Calculate_Distance(const vector<double> &atom1, const vector<double> &atom2) {
+    // Computes the Euclidean distance between two points in 3D space
     return sqrt(pow(atom1[0] - atom2[0], 2) +
                 pow(atom1[1] - atom2[1], 2) +
                 pow(atom1[2] - atom2[2], 2));
@@ -19,133 +22,149 @@ double Calculate_Distance(const vector<double> &atom1, const vector<double> &ato
 
 // Function to calculate the Lennard-Jones potential between two atoms
 double Calculate_LJ(double distance, double Sigma, double Epsilon) {
-    double sig_dist = Sigma / distance;
-    double term6 = pow(sig_dist, 6);
-    double term12 = pow(sig_dist, 12);
-    return 4 * Epsilon * (term12 - term6);
+    // Calculates the Lennard-Jones potential using the given parameters
+    double sig_dist = Sigma / distance;       // Ratio of sigma to distance
+    double term6 = pow(sig_dist, 6);          // (Sigma / distance)^6
+    double term12 = pow(sig_dist, 12);        // (Sigma / distance)^12
+    return 4 * Epsilon * (term12 - term6);    // LJ potential formula
 }
 
 // Function to calculate the total energy of a cluster of atoms
 double Calculate_Total_Energy(const vector<Atom> &atoms, double Sigma, double Epsilon) {
-    double total_energy = 0.0;
-    for (size_t i = 0; i < atoms.size(); ++i) {
+    double total_energy = 0.0;                // Initialize total energy
+    for (size_t i = 0; i < atoms.size(); ++i) {  // Loop through all pairs of atoms
         for (size_t j = i + 1; j < atoms.size(); ++j) {
             double distance = Calculate_Distance(atoms[i].coordinates, atoms[j].coordinates);
-            if (distance > 0) {
-                total_energy += Calculate_LJ(distance, Sigma, Epsilon);
+            if (distance > 0) {               // Avoid division by zero
+                total_energy += Calculate_LJ(distance, Sigma, Epsilon); // Add LJ potential
             }
         }
     }
-    return total_energy;
+    return total_energy;                      // Return total potential energy
 }
 
+// Function to compute second derivatives for the Hessian matrix
 double Compute_Second_Derivative(vector<Atom> &atoms, int atom1, int coord1, int atom2, int coord2, double delta, double Sigma, double Epsilon) {
+    // Perturb atom1 and atom2 coordinates in positive and negative directions
     atoms[atom1].coordinates[coord1] += delta;
     atoms[atom2].coordinates[coord2] += delta;
-    double energy_pp = Calculate_Total_Energy(atoms, Sigma, Epsilon);
+    double energy_pp = Calculate_Total_Energy(atoms, Sigma, Epsilon); // Energy (++)
 
     atoms[atom2].coordinates[coord2] -= 2 * delta;
-    double energy_pm = Calculate_Total_Energy(atoms, Sigma, Epsilon);
+    double energy_pm = Calculate_Total_Energy(atoms, Sigma, Epsilon); // Energy (+-)
 
     atoms[atom1].coordinates[coord1] -= 2 * delta;
-    double energy_mm = Calculate_Total_Energy(atoms, Sigma, Epsilon);
+    double energy_mm = Calculate_Total_Energy(atoms, Sigma, Epsilon); // Energy (--)
 
     atoms[atom2].coordinates[coord2] += 2 * delta;
-    double energy_mp = Calculate_Total_Energy(atoms, Sigma, Epsilon);
+    double energy_mp = Calculate_Total_Energy(atoms, Sigma, Epsilon); // Energy (-+)
 
+    // Restore original positions
     atoms[atom1].coordinates[coord1] += delta;
     atoms[atom2].coordinates[coord2] -= delta;
 
+    // Compute second derivative using finite difference formula
     return (energy_pp - energy_pm - energy_mp + energy_mm) / (4 * delta * delta);
 }
 
 // Function to compute the Hessian matrix
 Eigen::MatrixXd Compute_Hessian_Matrix(vector<Atom> &atoms, double delta, double Sigma, double Epsilon) {
-    int num_atoms = atoms.size();
-    Eigen::MatrixXd hessian = Eigen::MatrixXd::Zero(3 * num_atoms, 3 * num_atoms);
+    int num_atoms = atoms.size();            // Number of atoms in the molecule
+    Eigen::MatrixXd hessian = Eigen::MatrixXd::Zero(3 * num_atoms, 3 * num_atoms); // Initialize Hessian matrix
 
+    // Loop over all atoms and their x, y, z coordinates
     for (int i = 0; i < num_atoms; ++i) {
-        for (int j = 0; j < 3; ++j) {
+        for (int j = 0; j < 3; ++j) {        // Loop over x, y, z of atom i
             for (int k = 0; k < num_atoms; ++k) {
-                for (int l = 0; l < 3; ++l) {
+                for (int l = 0; l < 3; ++l) { // Loop over x, y, z of atom k
+                    // Compute second derivative for Hessian
                     double second_derivative = Compute_Second_Derivative(atoms, i, j, k, l, delta, Sigma, Epsilon);
-                    hessian(3 * i + j, 3 * k + l) = second_derivative;
-                    hessian(3 * k + l, 3 * i + j) = second_derivative; // Symmetric
+                    hessian(3 * i + j, 3 * k + l) = second_derivative; // Update Hessian
                 }
             }
         }
     }
-    return hessian;
+    return hessian;                          // Return the Hessian matrix
 }
 
 // Function to transform Hessian to mass-weighted coordinates
 Eigen::MatrixXd TransformToMassWeighted(const Eigen::MatrixXd &hessian, const vector<Atom> &atoms) {
-    int num_atoms = atoms.size();
+    int num_atoms = atoms.size();            // Number of atoms
     Eigen::MatrixXd mass_weighted_hessian = Eigen::MatrixXd::Zero(3 * num_atoms, 3 * num_atoms);
 
+    // Loop over the Hessian matrix to apply mass-weighting
     for (int i = 0; i < 3 * num_atoms; ++i) {
         for (int j = 0; j < 3 * num_atoms; ++j) {
-            int atom_i = i / 3;  // Determine which atom the row belongs to
-            int atom_j = j / 3;  // Determine which atom the column belongs to
-            double mass_factor = sqrt(atoms[atom_i].mass * atoms[atom_j].mass);
-            mass_weighted_hessian(i, j) = hessian(i, j) / mass_factor;
+            int atom_i = i / 3;              // Atom corresponding to row i
+            int atom_j = j / 3;              // Atom corresponding to column j
+            double mass_factor = sqrt(atoms[atom_i].mass * atoms[atom_j].mass); // Mass factor
+            mass_weighted_hessian(i, j) = hessian(i, j) / mass_factor; // Apply mass weighting
         }
     }
-    return mass_weighted_hessian;
+    return mass_weighted_hessian;            // Return the mass-weighted Hessian
 }
 
-// Function to compute vibrational frequencies from the mass-weighted Hessian
-Eigen::VectorXd Compute_Vibrational_Frequencies(const Eigen::MatrixXd &mass_weighted_hessian) {
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian);
-    Eigen::VectorXd eigenvalues = solver.eigenvalues(); // Eigenvalues correspond to vibrational frequencies squared
-
-    Eigen::VectorXd frequencies(eigenvalues.size());
-    for (int i = 0; i < frequencies.size(); ++i) {
-        frequencies(i) = (eigenvalues(i) > 0) ? sqrt(eigenvalues(i)) : 0.0; // Only positive eigenvalues are meaningful
+// Function to determine if vibrational modes are IR-active
+bool Is_IR_Active(const Eigen::VectorXd &eigenvector, const vector<Atom> &atoms) {
+    Eigen::Vector3d dipole_derivative = Eigen::Vector3d::Zero(); // Initialize dipole derivative vector
+    for (int i = 0; i < atoms.size(); ++i) {
+        // Compute displacement for each atom
+        Eigen::Vector3d displacement(eigenvector(3 * i), eigenvector(3 * i + 1), eigenvector(3 * i + 2));
+        dipole_derivative += atoms[i].charge * displacement; // Dipole derivative = charge × displacement
     }
-    return frequencies;
+    return dipole_derivative.norm() > 1e-6; // IR-active if dipole derivative is non-zero
 }
 
-// Function to read input files
+// Function to read input files and assign partial charges/masses for C, H, O, and N
 vector<Atom> ReadInput(const string &file_name) {
-    ifstream infile(file_name);
+    ifstream infile(file_name);              // Open input file
     if (!infile.is_open()) {
-        throw runtime_error("ERROR: Cannot open file: " + file_name);
+        throw runtime_error("ERROR: Cannot open file: " + file_name); // Handle file error
     }
 
-    vector<Atom> atoms;
-    int num_atoms, charge;
-    infile >> num_atoms >> charge;
+    vector<Atom> atoms;                      // Initialize vector to store atoms
+    int num_atoms, charge;                   // Number of atoms and total charge of molecule
+    infile >> num_atoms >> charge;           // Read first line of input file
 
     for (int i = 0; i < num_atoms; ++i) {
         int atomic_num;
         double x, y, z;
-        infile >> atomic_num >> x >> y >> z;
+        infile >> atomic_num >> x >> y >> z; // Read atomic number and coordinates
 
-        // Assign approximate masses based on atomic number
-        double mass = (atomic_num == 1) ? 1.008 : (atomic_num == 8) ? 15.999 : 0.0;
+        // Assign masses and partial charges based on atomic number
+        double mass = (atomic_num == 1) ? 1.008 :  // Hydrogen
+                      (atomic_num == 8) ? 15.999 : // Oxygen
+                      (atomic_num == 6) ? 12.011 : // Carbon
+                      (atomic_num == 7) ? 14.007 : // Nitrogen
+                      0.0;                         // Default
 
-        atoms.push_back({mass, {x, y, z}});
+        double charge = (atomic_num == 1) ? 0.42 :  // Partial charge for Hydrogen
+                        (atomic_num == 8) ? -0.84 : // Partial charge for Oxygen
+                        (atomic_num == 6) ? 0.0 :   // Partial charge for Carbon
+                        (atomic_num == 7) ? 0.0 :   // Partial charge for Nitrogen
+                        0.0;                        // Default
+
+        atoms.push_back({mass, charge, {x, y, z}}); // Add atom to list
     }
 
-    infile.close();
-    return atoms;
+    infile.close();                         // Close input file
+    return atoms;                           // Return the list of atoms
 }
 
 // Function to convert coordinates from Ångstrom to Bohr
 void Convert_To_Bohr(vector<Atom> &atoms) {
-    const double angstrom_to_bohr = 1.8897259886;
+    const double angstrom_to_bohr = 1.8897259886;   // Conversion factor
     for (Atom &atom : atoms) {
         for (double &coord : atom.coordinates) {
-            coord *= angstrom_to_bohr;
+            coord *= angstrom_to_bohr;             // Convert each coordinate
         }
     }
 }
 
 // Main function
 int main() {
-    vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/HO.txt"};
-    vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/HO_results.txt"};
+    vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/NH3.txt", "../input_files/CH4.txt"};
+    vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/NH3_results.txt", "../outputs/CH4_results.txt"};
 
     struct MoleculeParameters {
         double Sigma;
@@ -153,45 +172,52 @@ int main() {
         double delta;
     };
 
-    // For testing purposes, I have chagned the delta values to 1e-4
+    // Define molecule-specific parameters
     vector<MoleculeParameters> molecule_params = {
         {2.75, 0.0104, 0.0001},  // H2
         {3.16, 0.650, 0.0001},   // H2O
-        {3.46, 0.138, 0.0001}    // HO
+        {3.46, 0.138, 0.0001},   // NH3
+        {3.82, 0.210, 0.0001}    // CH4
     };
 
     for (size_t i = 0; i < input_files.size(); ++i) {
         try {
             cout << "Processing " << input_files[i] << "..." << endl;
 
-            // Step 1: Read and set up atomic data
+            // Read atomic data from input file
             vector<Atom> atoms = ReadInput(input_files[i]);
+
+            // Convert coordinates to Bohr
             Convert_To_Bohr(atoms);
+
+            // Retrieve molecule parameters
             const MoleculeParameters &params = molecule_params[i];
 
-            // Step 2: Compute Hessian Matrix
+            // Compute Hessian matrix
             Eigen::MatrixXd hessian = Compute_Hessian_Matrix(atoms, params.delta, params.Sigma, params.Epsilon);
 
-            // Step 3: Transform Hessian Matrix to a Mass-Weighted Matrix
+            // Transform to mass-weighted Hessian
             Eigen::MatrixXd mass_weighted_hessian = TransformToMassWeighted(hessian, atoms);
 
-            // Step 4: Compute Vibrational Frequencies
-            Eigen::VectorXd frequencies = Compute_Vibrational_Frequencies(mass_weighted_hessian);
+            // Diagonalize the mass-weighted Hessian
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian);
+            Eigen::VectorXd eigenvalues = solver.eigenvalues();   // Vibrational frequencies squared
+            Eigen::MatrixXd eigenvectors = solver.eigenvectors(); // Normal modes
 
-            // Converting frequencies to cm^-1 from Bohr
-            const double conversion_factor = 5140.486; 
-            Eigen::VectorXd frequencies_cm(frequencies.size());
-            for(int i = 0; i < frequencies.size(); i++){
-                frequencies_cm[i] = frequencies[i] * (conversion_factor);
+            // Convert eigenvalues to vibrational frequencies (cm^-1)
+            const double conversion_factor = 5140.486;            // Bohr to cm^-1
+            Eigen::VectorXd frequencies_cm(eigenvalues.size());
+            for (int j = 0; j < eigenvalues.size(); ++j) {
+                frequencies_cm[j] = (eigenvalues[j] > 0) ? sqrt(eigenvalues[j]) * conversion_factor : 0.0;
             }
 
-            // Step 5: Compute eigenvalues and eigenvectors for normal modes
-            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(mass_weighted_hessian);
-            Eigen::VectorXd eigenvalues = solver.eigenvalues();
-            Eigen::MatrixXd eigenvectors = solver.eigenvectors();
+            // Determine IR activity for each mode
+            vector<bool> ir_active(eigenvectors.cols());
+            for (int j = 0; j < eigenvectors.cols(); ++j) {
+                ir_active[j] = Is_IR_Active(eigenvectors.col(j), atoms);
+            }
 
-
-
+            // Write results to output file
             ofstream outfile(output_files[i]);
             if (!outfile.is_open()) throw runtime_error("ERROR: Cannot open file: " + output_files[i]);
 
@@ -199,7 +225,11 @@ int main() {
             outfile << "Mass-Weighted Hessian Matrix:\n" << mass_weighted_hessian << "\n\n";
             outfile << "Eigenvalues (Vibrational Frequencies Squared):\n" << eigenvalues << "\n\n";
             outfile << "Vibrational Frequencies (cm^-1):\n" << frequencies_cm << "\n\n";
-            outfile << "Eigenvectors (Normal Modes):\n" << eigenvectors << "\n";
+            outfile << "Eigenvectors (Normal Modes):\n" << eigenvectors << "\n\n";
+            outfile << "IR Activity (1 = Active, 0 = Inactive):\n";
+            for (bool active : ir_active) {
+                outfile << (active ? "1" : "0") << "\n";
+            }
 
             outfile.close();
             cout << "Results written to " << output_files[i] << endl;
