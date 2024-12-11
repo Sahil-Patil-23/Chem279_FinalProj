@@ -1,9 +1,9 @@
-#include <iostream>
-#include <fstream>
-#include <cmath>
-#include <vector>
-#include <Eigen/Dense>
-using namespace std;
+#include <iostream>           
+#include <fstream>            
+#include <cmath>              
+#include <vector>             
+#include <Eigen/Dense>        
+using namespace std;          
 
 // Struct to store atomic data: mass, charge, and coordinates
 struct Atom {
@@ -106,13 +106,25 @@ Eigen::MatrixXd TransformToMassWeighted(const Eigen::MatrixXd &hessian, const ve
 
 // Function to determine if vibrational modes are IR-active
 bool Is_IR_Active(const Eigen::VectorXd &eigenvector, const vector<Atom> &atoms) {
-    Eigen::Vector3d dipole_derivative = Eigen::Vector3d::Zero(); // Initialize dipole derivative vector
-    for (int i = 0; i < atoms.size(); ++i) {
-        // Compute displacement for each atom
-        Eigen::Vector3d displacement(eigenvector(3 * i), eigenvector(3 * i + 1), eigenvector(3 * i + 2));
-        dipole_derivative += atoms[i].charge * displacement; // Dipole derivative = charge × displacement
+    // Initialize a vector to store the total dipole derivative
+    Eigen::Vector3d dipole_derivative = Eigen::Vector3d::Zero();
+
+    // Check for homonuclear diatomic molecules, which are always IR-inactive
+    if (atoms.size() == 2 && atoms[0].charge == atoms[1].charge) {
+        return false;
     }
-    return dipole_derivative.norm() > 1e-6; // IR-active if dipole derivative is non-zero
+
+    // Iterate over each atom in the molecule
+    for (int i = 0; i < atoms.size(); ++i) {
+        // Extract the x, y, and z components of the displacement vector for the current atom
+        Eigen::Vector3d displacement(eigenvector(3 * i), eigenvector(3 * i + 1), eigenvector(3 * i + 2));
+
+        // Calculate the contribution of the atom's charge and displacement to the total dipole derivative
+        dipole_derivative += atoms[i].charge * displacement;
+    }
+
+    // Check if the magnitude of the total dipole derivative is significant
+    return dipole_derivative.norm() > 1e-6;
 }
 
 // Function to read input files and assign partial charges/masses for C, H, O, and N
@@ -163,6 +175,7 @@ void Convert_To_Bohr(vector<Atom> &atoms) {
 
 // Main function
 int main() {
+    // Input/output file paths for different molecules
     vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/NH3.txt", "../input_files/CH4.txt"};
     vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/NH3_results.txt", "../outputs/CH4_results.txt"};
 
@@ -172,14 +185,15 @@ int main() {
         double delta;
     };
 
-    // Define molecule-specific parameters
+    // Define molecule-specific parameters (sigma, epsilon, and delta values)
     vector<MoleculeParameters> molecule_params = {
-        {2.75, 0.0104, 0.0001},  // H2
-        {3.16, 0.650, 0.0001},   // H2O
-        {3.46, 0.138, 0.0001},   // NH3
-        {3.82, 0.210, 0.0001}    // CH4
+        {2.827, 0.0597, 1e-6},  // H2
+        {2.641, 0.0698, 1e-6},  // H2O
+        {2.900, 0.0481, 1e-6},  // NH3
+        {3.758, 0.0128, 1e-6}   // CH4
     };
 
+    // Iterate over each molecule
     for (size_t i = 0; i < input_files.size(); ++i) {
         try {
             cout << "Processing " << input_files[i] << "..." << endl;
@@ -204,17 +218,27 @@ int main() {
             Eigen::VectorXd eigenvalues = solver.eigenvalues();   // Vibrational frequencies squared
             Eigen::MatrixXd eigenvectors = solver.eigenvectors(); // Normal modes
 
+            // Set small negative eigenvalues to zero to avoid numerical noise
+            for (int j = 0; j < eigenvalues.size(); ++j) {
+                if (eigenvalues[j] < 0) eigenvalues[j] = 0.0;
+            }
+
             // Convert eigenvalues to vibrational frequencies (cm^-1)
             const double conversion_factor = 5140.486;            // Bohr to cm^-1
             Eigen::VectorXd frequencies_cm(eigenvalues.size());
             for (int j = 0; j < eigenvalues.size(); ++j) {
-                frequencies_cm[j] = (eigenvalues[j] > 0) ? sqrt(eigenvalues[j]) * conversion_factor : 0.0;
+                frequencies_cm[j] = sqrt(eigenvalues[j]) * conversion_factor;
             }
 
             // Determine IR activity for each mode
             vector<bool> ir_active(eigenvectors.cols());
             for (int j = 0; j < eigenvectors.cols(); ++j) {
                 ir_active[j] = Is_IR_Active(eigenvectors.col(j), atoms);
+                Eigen::Vector3d dipole_derivative = Eigen::Vector3d::Zero();
+                for (int k = 0; k < atoms.size(); ++k) {
+                    Eigen::Vector3d displacement(eigenvectors(3 * k, j), eigenvectors(3 * k + 1, j), eigenvectors(3 * k + 2, j));
+                    dipole_derivative += atoms[k].charge * displacement;
+                }
             }
 
             // Write results to output file
@@ -240,3 +264,4 @@ int main() {
 
     return 0;
 }
+
