@@ -176,8 +176,8 @@ void Convert_To_Bohr(vector<Atom> &atoms) {
 // Main function
 int main() {
     // Input/output file paths for different molecules
-    vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/NH3.txt", "../input_files/CH4.txt"};
-    vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/NH3_results.txt", "../outputs/CH4_results.txt"};
+    vector<string> input_files = {"../input_files/H2.txt", "../input_files/H2O.txt", "../input_files/NH3.txt"};
+    vector<string> output_files = {"../outputs/H2_results.txt", "../outputs/H2O_results.txt", "../outputs/NH3_results.txt"};
 
     struct MoleculeParameters {
         double Sigma;
@@ -186,6 +186,7 @@ int main() {
     };
 
     // Define molecule-specific parameters (sigma, epsilon, and delta values)
+    // https://basicmedicalkey.com/liquids-liquid-crystals-and-ionic-liquids/
     vector<MoleculeParameters> molecule_params = {
         {2.827, 0.0597, 1e-6},  // H2
         {2.641, 0.0698, 1e-6},  // H2O
